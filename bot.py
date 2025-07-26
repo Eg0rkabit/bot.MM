@@ -1,25 +1,21 @@
 import os
-import asyncio
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart, Command
-from aiogram.enums import ParseMode
+from aiogram.enums import ChatType
+from aiogram.filters import CommandStart
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
-# Настройки
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-GROUP_ID = int(os.getenv("GROUP_ID"))
-
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+# Инициализация бота
+bot = Bot(token=os.getenv("BOT_TOKEN"))
 dp = Dispatcher()
 
-# Хранилище вопросов
+# Хранилище вопросов (временное)
 questions_db = {}
 
 # ===== КЛАВИАТУРЫ =====
 def main_menu():
     builder = ReplyKeyboardBuilder()
     builder.row(
-        types.KeyboardButton(text="❓ Задать вопрос Наталье"),
+        types.KeyboardButton(text="❓ Задать вопрос"),
         types.KeyboardButton(text="📅 Записаться на приём")
     )
     return builder.as_markup(resize_keyboard=True)
@@ -29,7 +25,7 @@ def back_button():
     builder.add(types.KeyboardButton(text="◀️ Назад"))
     return builder.as_markup(resize_keyboard=True)
 
-# ===== ОБРАБОТЧИКИ =====
+# ===== ОСНОВНЫЕ КОМАНДЫ =====
 @dp.message(CommandStart())
 async def start(message: types.Message):
     await message.answer(
@@ -41,81 +37,69 @@ async def start(message: types.Message):
 async def back_handler(message: types.Message):
     await start(message)
 
-@dp.message(F.text == "❓ Задать вопрос Наталье")
+@dp.message(F.text == "❓ Задать вопрос")
 async def ask_question_handler(message: types.Message):
     await message.answer(
         "Напишите ваш вопрос:",
         reply_markup=back_button()
     )
 
-@dp.message(F.text == "📅 Записаться на приём")
-async def appointment_handler(message: types.Message):
-    await message.answer(
-        "Функция записи на прием в разработке",
-        reply_markup=back_button()
-    )
-
-# Пересылка вопросов в группу
-@dp.message(F.text & ~F.text.in_(["❓ Задать вопрос Наталье", "📅 Записаться на приём", "◀️ Назад"]))
+# ===== ПЕРЕСЫЛКА ВОПРОСОВ В ГРУППУ =====
+@dp.message(F.chat.type == ChatType.PRIVATE, F.text)
 async def forward_question(message: types.Message):
-    user = message.from_user
-    
-    # Формируем сообщение для группы
-    question_text = (
-        f"❓ <b>Новый вопрос</b>\n"
-        f"👤 {user.full_name}\n"
-        f"🆔 {user.id}\n"
-        f"📱 @{user.username}\n\n"
-        f"📄 {message.text}"
-    )
-    
-    # Кнопка "Ответить"
-    reply_markup = InlineKeyboardBuilder()
-    reply_markup.button(text="✍️ Ответить", callback_data=f"reply_{user.id}")
-    
-    # Отправляем в группу
-    sent_msg = await bot.send_message(
-        chat_id=GROUP_ID,
-        text=question_text,
-        reply_markup=reply_markup.as_markup()
-    )
-    
-    # Сохраняем вопрос
-    questions_db[sent_msg.message_id] = {
-        "user_id": user.id,
-        "question": message.text
-    }
-    
-    await message.answer(
-        "✅ Ваш вопрос отправлен!",
-        reply_markup=main_menu()
-    )
+    if message.text in ["❓ Задать вопрос", "📅 Записаться на приём", "◀️ Назад"]:
+        return
+        
+    try:
+        # Формируем сообщение для группы
+        question_text = (
+            f"❓ Вопрос от {message.from_user.full_name}\n"
+            f"👤 @{message.from_user.username or 'нет'}\n"
+            f"🆔 {message.from_user.id}\n\n"
+            f"📄 {message.text}"
+        )
+        
+        # Кнопка "Ответить"
+        reply_markup = InlineKeyboardBuilder()
+        reply_markup.button(text="✍️ Ответить", callback_data=f"reply_{message.from_user.id}")
+        
+        # Отправляем в группу
+        sent_msg = await bot.send_message(
+            chat_id=int(os.getenv("GROUP_ID")),
+            text=question_text,
+            reply_markup=reply_markup.as_markup()
+        )
+        
+        # Сохраняем связь
+        questions_db[sent_msg.message_id] = message.from_user.id
+        
+        await message.answer("✅ Ваш вопрос отправлен!", reply_markup=main_menu())
+        
+    except Exception as e:
+        await message.answer("❌ Ошибка при отправке вопроса")
 
-# Обработка ответов из группы
+# ===== ОБРАБОТКА ОТВЕТОВ ИЗ ГРУППЫ =====
 @dp.callback_query(F.data.startswith("reply_"))
 async def reply_handler(callback: types.CallbackQuery):
-    await callback.message.reply(
-        "Введите ваш ответ:",
-        reply_markup=back_button()
-    )
-    questions_db[callback.message.message_id]["admin_msg"] = callback.message
+    await callback.message.reply("Введите ваш ответ:")
 
-@dp.message(F.chat.id == GROUP_ID & F.reply_to_message)
+@dp.message(F.chat.id == int(os.getenv("GROUP_ID")), F.reply_to_message)
 async def send_reply(message: types.Message):
     if message.reply_to_message.message_id in questions_db:
-        question_data = questions_db[message.reply_to_message.message_id]
+        user_id = questions_db[message.reply_to_message.message_id]
         try:
             await bot.send_message(
-                chat_id=question_data["user_id"],
-                text=f"📨 <b>Ответ на ваш вопрос:</b>\n\n{message.text}"
+                chat_id=user_id,
+                text=f"📨 Ответ на ваш вопрос:\n\n{message.text}"
             )
             await message.reply("✅ Ответ отправлен!")
-        except Exception as e:
-            await message.reply(f"❌ Ошибка: {str(e)}")
+        except:
+            await message.reply("❌ Не удалось отправить ответ")
 
-# ===== ЗАПУСК =====
+# Запуск бота
 async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
