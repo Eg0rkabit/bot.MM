@@ -114,6 +114,9 @@ async def send_reply(message: types.Message):
         except:
             await message.reply("❌ Не удалось отправить ответ")
 
+async def main():
+    await dp.start_polling(bot)
+
 if __name__ == "__main__":
-    from aiogram import executor
-    executor.start_polling(dp)
+    import asyncio
+    asyncio.run(main())
