@@ -5,6 +5,9 @@ from aiogram.filters import Command, CommandStart
 from aiogram.enums.chat_type import ChatType
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 # Настройки
 TOKEN = os.getenv("BOT_TOKEN")
@@ -36,9 +39,9 @@ async def start(message: Message):
     )
 
 # Начало вопроса
-@router.message(F.text == "Задать вопрос❓")
+@router.message(F.text == "Задать вопрос")  
 async def ask_question(message: Message, state: FSMContext):
-    await state.set_state(States.waiting_for_question)
+    await state.set_state(States.waiting_for_question)  
     kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Отмена")],
