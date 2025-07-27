@@ -1,68 +1,49 @@
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+import asyncio
+import logging
+from aiogram import Bot, Dispatcher, F, Router
+from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup
+from aiogram.filters import CommandStart
+from aiogram.enums.chat_type import ChatType
 
-# ⏬ Получаем переменные окружения (на DockHost указываются в панели)
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-GROUP_ID = int(os.environ["GROUP_ID"])  # пример: -1001234567890
+TOKEN = os.getenv("BOT_TOKEN")
+GROUP_ID = int(os.getenv("GROUP_ID"))  # укажи ID группы здесь или через .env
 
-# 📦 Словарь: id сообщения в группе -> id пользователя
-user_question_map = {}
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+router = Router()
+dp.include_router(router)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("Задать вопрос", callback_data="ask_question")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Привет! Нажми кнопку, чтобы задать вопрос.", reply_markup=reply_markup)
+# Словарь: message_id в группе -> user_id
+message_map = {}
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.message.reply_text("Напиши свой вопрос одним сообщением.")
-    context.user_data["awaiting_question"] = True
+# Приветствие
+@router.message(CommandStart())
+async def start_handler(message: Message):
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Задать вопрос")]],
+        resize_keyboard=True
+    )
+    await message.answer("Привет! Нажми 'Задать вопрос', чтобы задать анонимный вопрос.", reply_markup=kb)
 
-async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("awaiting_question"):
-        context.user_data["awaiting_question"] = False
-        user_id = update.message.from_user.id
-        user_name = update.message.from_user.full_name
-        question = update.message.text
+# Получение вопроса
+@router.message(F.text == "Задать вопрос")
+async def ask_question(message: Message):
+    await message.answer("Напиши свой вопрос, и мы отправим его в группу.")
 
-        sent = await context.bot.send_message(
-            chat_id=GROUP_ID,
-            text=f"📩 Вопрос от {user_name}:\n\n{question}\n\n🔁 Ответьте на это сообщение, чтобы переслать ответ обратно.",
-        )
+# Обработка текста от пользователя
+@router.message(F.chat.type == ChatType.PRIVATE)
+async def forward_to_group(message: Message):
+    sent = await bot.send_message(GROUP_ID, f"❓ Новый вопрос:\n\n{message.text}")
+    message_map[sent.message_id] = message.chat.id
 
-        user_question_map[sent.message_id] = user_id
-        await update.message.reply_text("✅ Вопрос отправлен! Жди ответа.")
-    else:
-        await update.message.reply_text("Нажми кнопку, чтобы задать вопрос.")
-
-async def handle_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.reply_to_message:
-        original_msg_id = update.message.reply_to_message.message_id
-        if original_msg_id in user_question_map:
-            user_id = user_question_map[original_msg_id]
-            answer = update.message.text
-            responder = update.message.from_user.full_name
-
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=f"💬 Ответ от {responder}:\n\n{answer}"
-                )
-                await update.message.reply_text("✅ Ответ отправлен пользователю.")
-            except Exception as e:
-                await update.message.reply_text(f"❌ Ошибка при отправке: {e}")
-
-def main():
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, handle_private_message))
-    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, handle_group_reply))
-
-    print("✅ Бот запущен.")
-    application.run_polling()
-
-if __name__ == "__main__":
-    main()
+# Обработка ответа в группе (reply)
+@router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
+async def handle_group_reply(message: Message):
+    if message.reply_to_message and message.reply_to_message.message_id in message_map:
+        user_id = message_map[message.reply_to_message.message_id]
+        answer = f"💬 Ответ на ваш вопрос:\n\n{message.text}"
+        try:
+            await bot.send_message(user_id, answer)
+        except Exception as e:
+            await message.reply("❌ Не удалось доставить сообщение пользователю.")
