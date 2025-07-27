@@ -58,9 +58,18 @@ async def ask_question(message: Message, state: FSMContext):
 @router.message(Command("cancel"))
 async def cancel(message: Message, state: FSMContext):
     await state.clear()
+    
+    # Клавиатура главного меню (как в команде /start)
+    main_menu = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Задать вопрос")],
+        ],
+        resize_keyboard=True
+    )
+    
     await message.answer(
-        "Действие отменено.",
-        reply_markup=ReplyKeyboardRemove()
+        "◀️ Вы вернулись в главное меню. Что хотите сделать?",
+        reply_markup=main_menu
     )
 
 # Пересылка вопроса в группу
