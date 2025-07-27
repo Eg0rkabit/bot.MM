@@ -86,7 +86,13 @@ async def forward_question(message: Message, state: FSMContext):
         "✅ Ваш вопрос отправлен! Ожидайте ответа.",
         reply_markup=ReplyKeyboardRemove()
     )
-
+def get_waiting_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Вернуться в меню")],
+        ],
+        resize_keyboard=True
+    )    
 # Обработка ответов из группы
 @router.message(F.chat.type.in_({"group", "supergroup"}), F.reply_to_message)
 async def handle_group_reply(message: Message):
