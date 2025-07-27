@@ -31,12 +31,12 @@ async def start(message: Message):
         resize_keyboard=True
     )
     await message.answer(
-        "Привет! Нажми кнопку ниже, чтобы задать вопрос нашей команде.",
+        "Приветствую!",
         reply_markup=kb
     )
 
 # Начало вопроса
-@router.message(F.text == "Задать вопрос")
+@router.message(F.text == "Задать вопрос❓")
 async def ask_question(message: Message, state: FSMContext):
     await state.set_state(States.waiting_for_question)
     kb = ReplyKeyboardMarkup(
@@ -90,14 +90,11 @@ async def handle_group_reply(message: Message):
         return
     
     user_id = questions_map[replied_msg.message_id]
-    responder_name = message.from_user.full_name
-    
-    # Формируем ответ
-    response_text = f"💬 {responder_name} ответил(а) на ваш вопрос:\n\n{message.text}"
+    response_text = f"💬 Наталья ответила на ваш вопрос:\n\n{message.text}"
     
     try:
         await bot.send_message(user_id, response_text)
-    except Exception as e:
+    except Exception:
         await message.reply("❌ Не удалось отправить ответ пользователю")
 
 # Запуск бота
