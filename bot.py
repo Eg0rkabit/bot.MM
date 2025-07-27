@@ -20,7 +20,6 @@ questions_map = {}  # {message_id_in_group: (user_id, original_question)}
 
 class States(StatesGroup):
     waiting_for_question = State()
-    waiting_for_feedback = State()
 
 # Клавиатуры
 def get_main_menu_kb():
@@ -31,11 +30,18 @@ def get_main_menu_kb():
         resize_keyboard=True
     )
 
-def get_feedback_menu_kb():
+def get_waiting_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Задать ещё вопрос")],
-            [KeyboardButton(text="Завершить диалог")]
+            [KeyboardButton(text="Вернуться в меню")],
+        ],
+        resize_keyboard=True
+    )
+
+def get_cancel_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Отмена")],
         ],
         resize_keyboard=True
     )
@@ -44,7 +50,7 @@ def get_feedback_menu_kb():
 @router.message(CommandStart())
 async def start(message: Message):
     await message.answer(
-        "Приветствую!",
+        "Приветствую! Чем могу помочь?",
         reply_markup=get_main_menu_kb()
     )
 
@@ -54,19 +60,16 @@ async def ask_question(message: Message, state: FSMContext):
     await state.set_state(States.waiting_for_question)
     await message.answer(
         "Напишите ваш вопрос:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Отмена")]],
-            resize_keyboard=True
-        )
+        reply_markup=get_cancel_kb()
     )
 
-# Отмена
-@router.message(F.text == "Отмена")
+# Обработка возврата в меню
+@router.message(F.text.in_({"Отмена", "Вернуться в меню"}))
 @router.message(Command("cancel"))
-async def cancel(message: Message, state: FSMContext):
+async def return_to_menu(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "Действие отменено.",
+        "Главное меню:",
         reply_markup=get_main_menu_kb()
     )
 
@@ -77,22 +80,15 @@ async def forward_question(message: Message, state: FSMContext):
     question_text = f"❓ Вопрос от {user_name}:\n\n{message.text}"
     
     sent_message = await bot.send_message(GROUP_ID, question_text)
-    
-    # Сохраняем вопрос и пользователя
     questions_map[sent_message.message_id] = (message.from_user.id, message.text)
     
     await state.clear()
     await message.answer(
-        "✅ Ваш вопрос отправлен! Ожидайте ответа.",
-        reply_markup=ReplyKeyboardRemove()
+        "✅ Ваш вопрос отправлен! Ожидайте ответа.\n"
+        "Вы можете вернуться в меню в любое время.",
+        reply_markup=get_waiting_kb()
     )
-def get_waiting_kb():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Вернуться в меню")],
-        ],
-        resize_keyboard=True
-    )    
+
 # Обработка ответов из группы
 @router.message(F.chat.type.in_({"group", "supergroup"}), F.reply_to_message)
 async def handle_group_reply(message: Message):
@@ -102,34 +98,19 @@ async def handle_group_reply(message: Message):
     
     user_id, original_question = questions_map[replied_msg.message_id]
     response_text = (
-        f"💬 Ответ на ваш вопрос:\n"
+        f"💬 Получен ответ на ваш вопрос:\n\n"
         f"❓ Ваш вопрос: {original_question}\n\n"
-        f"📩 Ответ: {message.text}\n\n"
-        f"Вы можете задать ещё вопрос или завершить диалог"
+        f"📩 Ответ: {message.text}"
     )
     
     try:
         await bot.send_message(
-            user_id, 
+            user_id,
             response_text,
-            reply_markup=get_feedback_menu_kb()
+            reply_markup=get_main_menu_kb()  # Возвращаем в главное меню после ответа
         )
-        await bot.send_message(user_id, "Что вы хотите сделать дальше?")
     except Exception:
         await message.reply("❌ Не удалось отправить ответ пользователю")
-
-# Обработка обратной связи
-@router.message(F.text == "Задать ещё вопрос")
-async def ask_another_question(message: Message, state: FSMContext):
-    await ask_question(message, state)
-
-@router.message(F.text == "Завершить диалог")
-async def finish_dialog(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer(
-        "Диалог завершён. Вы можете начать новый в любое время.",
-        reply_markup=get_main_menu_kb()
-    )
 
 # Запуск бота
 async def main():
