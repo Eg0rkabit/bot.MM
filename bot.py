@@ -74,7 +74,7 @@ async def return_to_menu(message: Message, state: FSMContext):
     )
 
 # Пересылка вопроса в группу
-@router.message(States.waiting_for_question)
+@router.message(States.waiting_for_question, F.chat.type == ChatType.PRIVATE)
 async def forward_question(message: Message, state: FSMContext):
     user_name = message.from_user.full_name
     question_text = f"❓ Вопрос от {user_name}:\n\n{message.text}"
@@ -89,8 +89,12 @@ async def forward_question(message: Message, state: FSMContext):
         reply_markup=get_waiting_kb()
     )
 
-# Обработка ответов из группы
-@router.message(F.chat.type.in_({"group", "supergroup"}), F.reply_to_message)
+# Обработка ответов в группе (только на пересланные вопросы)
+@router.message(
+    F.chat.id == GROUP_ID,
+    F.reply_to_message,
+    F.reply_to_message.from_user.id == bot.id  # Ответ только на сообщения бота
+)
 async def handle_group_reply(message: Message):
     replied_msg = message.reply_to_message
     if replied_msg.message_id not in questions_map:
@@ -107,9 +111,10 @@ async def handle_group_reply(message: Message):
         await bot.send_message(
             user_id,
             response_text,
-            reply_markup=get_main_menu_kb()  # Возвращаем в главное меню после ответа
+            reply_markup=get_main_menu_kb()
         )
-    except Exception:
+    except Exception as e:
+        print(f"Ошибка отправки ответа: {e}")
         await message.reply("❌ Не удалось отправить ответ пользователю")
 
 # Запуск бота
