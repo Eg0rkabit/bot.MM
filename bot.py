@@ -91,9 +91,15 @@ async def forward_question(message: Message, state: FSMContext):
 @router.message(F.chat.type.in_({"group", "supergroup"}), F.reply_to_message)
 async def handle_group_reply(message: Message):
     replied_msg = message.reply_to_message
+
+    # Проверяем, что на сообщение ответил человек, а не бот
+    if replied_msg.from_user.id != (await bot.me()).id:
+        return
+
+    # Проверяем, что это сообщение бот ранее отправлял как вопрос
     if replied_msg.message_id not in questions_map:
         return
-    
+
     user_id, original_question = questions_map[replied_msg.message_id]
     response_text = (
         f"💬 Ответ на ваш вопрос:\n"
@@ -101,16 +107,17 @@ async def handle_group_reply(message: Message):
         f"📩 Ответ: {message.text}\n\n"
         f"Вы можете задать ещё вопрос или завершить диалог"
     )
-    
+
     try:
         await bot.send_message(
-            user_id, 
+            user_id,
             response_text,
             reply_markup=get_feedback_menu_kb()
         )
         await bot.send_message(user_id, "Что вы хотите сделать дальше?")
     except Exception:
         await message.reply("❌ Не удалось отправить ответ пользователю")
+
 
 # Обработка обратной связи
 @router.message(F.text == "Задать ещё вопрос")
