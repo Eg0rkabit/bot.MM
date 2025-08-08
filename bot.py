@@ -32,7 +32,7 @@ user_question_map = {}
 async def start_cmd(message: Message):
     if message.chat.type != "private":
         return
-    await message.answer("Привет! Выберите действие:", reply_markup=main_menu_kb)
+    await message.answer("Привет! Задай вопрос Наталье или запишись на консультацию.", reply_markup=main_menu_kb)
 
 @dp.message(lambda m: m.text == "❓ Задать вопрос")
 async def ask_question(message: Message, state: FSMContext):
@@ -47,7 +47,7 @@ async def receive_question(message: Message, state: FSMContext):
         return
     if message.text == "🔙 Назад":
         await state.clear()
-        await message.answer("Вы вернулись в меню.", reply_markup=main_menu_kb)
+        await message.answer("Пожалуйста, выберите действие.", reply_markup=main_menu_kb)
         return
 
     sent_msg = await bot.send_message(
