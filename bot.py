@@ -64,7 +64,9 @@ async def receive_question(message: Message, state: FSMContext):
 async def consultation(message: Message, state: FSMContext):
     await message.answer(
         "Чтобы записаться на консультацию, напишите Наталье:\n"
+        
         "https://t.me/n_a_loginova"
+        
         "Для возврата в главное меню нажмите «🔙 Назад».",
         reply_markup=back_kb
     )
