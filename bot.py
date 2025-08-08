@@ -1,7 +1,6 @@
 import os
 import logging
 from aiogram import Bot, Dispatcher
-from aiogram.client.session import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import Message
 from aiogram.filters import Command
@@ -21,7 +20,9 @@ if not TOKEN or not GROUP_ID:
 class QuestionForm(StatesGroup):
     waiting_for_question = State()
 
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(token=TOKEN)
+bot.default_parse_mode = ParseMode.HTML
+
 dp = Dispatcher(storage=MemoryStorage())
 
 user_question_map = {}
