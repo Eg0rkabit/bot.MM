@@ -1,5 +1,6 @@
 import os
-import logging
+from aiogram import Bot
+from aiogram.enums import ParseMode
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.types import Message
@@ -9,9 +10,9 @@ from keyboards import main_menu_kb, back_kb
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-logging.basicConfig(level=logging.INFO)
-
 TOKEN = os.getenv("BOT_TOKEN")
+bot = Bot(token=TOKEN)
+bot.default_parse_mode = ParseMode.HTML
 GROUP_ID = int(os.getenv("GROUP_ID"))
 
 if not TOKEN or not GROUP_ID:
