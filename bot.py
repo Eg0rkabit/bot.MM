@@ -52,7 +52,7 @@ async def receive_question(message: Message, state: FSMContext):
 
     sent_msg = await bot.send_message(
         GROUP_ID,
-        f"❓ Вопрос от <b>{message.from_user.full_name}</b> (id: {message.from_user.id}):\n\n{message.text}"
+        f"❓ Вопрос от {message.from_user.full_name}:\n\n{message.text}"
     )
 
     user_question_map[sent_msg.message_id] = message.from_user.id
