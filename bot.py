@@ -62,22 +62,18 @@ async def receive_question(message: Message, state: FSMContext):
 
 @dp.message(lambda m: m.text == "📅 Записаться на консультацию")
 async def consultation(message: Message, state: FSMContext):
-    if message.chat.type != "private":
-        return
     await message.answer(
-        "Чтобы записаться на консультацию, перейдите по ссылке:\n"
-        "https://t.me/your_consultation_bot_or_calendar_link\n\n"
-        "Или напишите сюда ваш вопрос.\n\n"
-        "Для возврата в меню нажмите «🔙 Назад».",
+        "Чтобы записаться на консультацию, напишите Наталье:\n"
+        "https://t.me/n_a_loginova"
+        "Для возврата в главное меню нажмите «🔙 Назад».",
         reply_markup=back_kb
     )
-    await state.set_state(ConsultationForm.waiting_for_message)
 
 @dp.message(ConsultationForm.waiting_for_message)
 async def receive_consultation_message(message: Message, state: FSMContext):
     if message.text == "🔙 Назад":
         await state.clear()
-        await message.answer("Вы вернулись в меню.", reply_markup=main_menu_kb)
+        await message.answer("Вы вернулись в главное меню.", reply_markup=main_menu_kb)
         return
     # Здесь можно переслать в группу или сохранить — по желанию
     await message.answer("Спасибо за сообщение! Мы свяжемся с вами в ближайшее время.")
