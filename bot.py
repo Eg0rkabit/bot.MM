@@ -1,141 +1,68 @@
 import os
-from aiogram import Bot, Dispatcher, F, Router
-from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from aiogram.filters import Command, CommandStart
-from aiogram.enums.chat_type import ChatType
+import logging
+from aiogram import Bot, Dispatcher
+from aiogram.types import Message
+from aiogram.filters import Command
+from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
+from keyboards import main_menu_kb, back_kb
+from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 
-# Настройки
+# Логирование
+logging.basicConfig(level=logging.INFO)
+
+# Загружаем токен и ID группы из переменных окружения
 TOKEN = os.getenv("BOT_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID"))
 
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
-router = Router()
-dp.include_router(router)
-
-# Для связи вопросов и ответов
-questions_map = {}  # {message_id_in_group: (user_id, original_question)}
-
-class States(StatesGroup):
+# FSM состояния
+class QuestionForm(StatesGroup):
     waiting_for_question = State()
-    waiting_for_feedback = State()
 
-# Клавиатуры
-def get_main_menu_kb():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Задать вопрос")],
-        ],
-        resize_keyboard=True
-    )
+# Инициализация
+bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher(storage=MemoryStorage())
 
-def get_feedback_menu_kb():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Задать ещё вопрос")],
-            [KeyboardButton(text="Завершить диалог")]
-        ],
-        resize_keyboard=True
-    )
+# Словарь для связи user_id ↔ message_id в группе
+user_question_map = {}
 
-# Старт
-@router.message(CommandStart())
-async def start(message: Message):
-    await message.answer(
-        "Приветствую!",
-        reply_markup=get_main_menu_kb()
-    )
+# /start
+@dp.message(Command("start"))
+async def start_cmd(message: Message):
+    await message.answer("Привет! Выберите действие:", reply_markup=main_menu_kb)
 
-# Начало вопроса
-@router.message(F.text == "Задать вопрос")
+# Выбор "Задать вопрос"
+@dp.message(lambda m: m.text == "❓ Задать вопрос")
 async def ask_question(message: Message, state: FSMContext):
-    await state.set_state(States.waiting_for_question)
-    await message.answer(
-        "Напишите ваш вопрос:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Отмена")]],
-            resize_keyboard=True
-        )
+    await message.answer("Напишите свой вопрос или нажмите «Назад»:", reply_markup=back_kb)
+    await state.set_state(QuestionForm.waiting_for_question)
+
+# Приём вопроса
+@dp.message(QuestionForm.waiting_for_question)
+async def receive_question(message: Message, state: FSMContext):
+    if message.text == "🔙 Назад":
+        await state.clear()
+        await message.answer("Вы вернулись в меню.", reply_markup=main_menu_kb)
+        return
+
+    sent_msg = await bot.send_message(
+        GROUP_ID,
+        f"❓ Вопрос от <b>{message.from_user.full_name}</b> (id: {message.from_user.id}):\n\n{message.text}"
     )
 
-# Отмена
-@router.message(F.text == "Отмена")
-@router.message(Command("cancel"))
-async def cancel(message: Message, state: FSMContext):
+    user_question_map[sent_msg.message_id] = message.from_user.id
+    await message.answer("Ваш вопрос отправлен. Ожидайте ответа.", reply_markup=main_menu_kb)
     await state.clear()
-    await message.answer(
-        "Действие отменено.",
-        reply_markup=get_main_menu_kb()
-    )
 
-# Пересылка вопроса в группу
-@router.message(States.waiting_for_question)
-async def forward_question(message: Message, state: FSMContext):
-    user_name = message.from_user.full_name
-    question_text = f"❓ Вопрос от {user_name}:\n\n{message.text}"
-    
-    sent_message = await bot.send_message(GROUP_ID, question_text)
-    
-    # Сохраняем вопрос и пользователя
-    questions_map[sent_message.message_id] = (message.from_user.id, message.text)
-    
-    await state.clear()
-    await message.answer(
-        "✅ Ваш вопрос отправлен! Ожидайте ответа.",
-        reply_markup=ReplyKeyboardRemove()
-    )
-
-# Обработка ответов из группы
-@router.message(F.chat.type.in_({"group", "supergroup"}), F.reply_to_message)
+# Ловим ответ в группе
+@dp.message()
 async def handle_group_reply(message: Message):
-    replied_msg = message.reply_to_message
-
-    # Проверяем, что на сообщение ответил человек, а не бот
-    if replied_msg.from_user.id != (await bot.me()).id:
-        return
-
-    # Проверяем, что это сообщение бот ранее отправлял как вопрос
-    if replied_msg.message_id not in questions_map:
-        return
-
-    user_id, original_question = questions_map[replied_msg.message_id]
-    response_text = (
-        f"💬 Ответ на ваш вопрос:\n"
-        f"❓ Ваш вопрос: {original_question}\n\n"
-        f"📩 Ответ: {message.text}\n\n"
-        f"Вы можете задать ещё вопрос или завершить диалог"
-    )
-
-    try:
-        await bot.send_message(
-            user_id,
-            response_text,
-            reply_markup=get_feedback_menu_kb()
-        )
-        await bot.send_message(user_id, "Что вы хотите сделать дальше?")
-    except Exception:
-        await message.reply("❌ Не удалось отправить ответ пользователю")
-
-
-# Обработка обратной связи
-@router.message(F.text == "Задать ещё вопрос")
-async def ask_another_question(message: Message, state: FSMContext):
-    await ask_question(message, state)
-
-@router.message(F.text == "Завершить диалог")
-async def finish_dialog(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer(
-        "Диалог завершён. Вы можете начать новый в любое время.",
-        reply_markup=get_main_menu_kb()
-    )
-
-# Запуск бота
-async def main():
-    await dp.start_polling(bot)
+    if message.chat.id == GROUP_ID and message.reply_to_message:
+        original_id = message.reply_to_message.message_id
+        if original_id in user_question_map:
+            user_id = user_question_map[original_id]
+            await bot.send_message(user_id, f"📩 Ответ на ваш вопрос:\n\n{message.text}")
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    dp.run_polling(bot)
